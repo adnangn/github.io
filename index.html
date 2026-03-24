@@ -799,6 +799,79 @@
             margin-bottom: 4px;
             padding-left: 0;
         }
+
+        .ek4-inline-btn {
+            border: none;
+            background: transparent;
+            color: #93c5fd;
+            text-decoration: underline;
+            cursor: pointer;
+            font-weight: 600;
+            padding: 0;
+            font-size: inherit;
+        }
+
+        .ek4-inline-btn:hover {
+            color: #bfdbfe;
+        }
+
+        .ek4-toolbar {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 10px;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .ek4-search-input {
+            width: 100%;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            background: rgba(15, 23, 42, 0.7);
+            color: #e2e8f0;
+            padding: 11px 12px;
+            border-radius: 8px;
+            outline: none;
+            font-size: 0.95rem;
+        }
+
+        .ek4-search-input:focus {
+            border-color: var(--accent-color);
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+        }
+
+        .ek4-stats {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            white-space: nowrap;
+        }
+
+        .ek4-table-wrap {
+            overflow: auto;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 10px;
+            max-height: 62vh;
+        }
+
+        .ek4-table {
+            margin-top: 0;
+            min-width: 780px;
+        }
+
+        .ek4-empty {
+            text-align: center;
+            color: #94a3b8;
+            padding: 20px;
+        }
+
+        @media (max-width: 860px) {
+            .ek4-toolbar {
+                grid-template-columns: 1fr;
+            }
+
+            .ek4-stats {
+                white-space: normal;
+            }
+        }
     </style>
     <!-- Tailwind CSS (Scoped/CDN) -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -832,6 +905,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="./nace-data.js"></script>
+    <script src="./ek4-data.js"></script>
 </head>
 
 <body>
@@ -2010,6 +2084,36 @@
         </div>
     </div>
 
+    <!-- EK-4 ARAMA MODALI -->
+    <div id="ek4Modal" class="modal-overlay" onclick="closeEk4Modal(event)">
+        <div class="modal-content" style="max-width: 1000px; height: 90vh; display: flex; flex-direction: column;">
+            <div class="modal-header">
+                <h2>EK-4: Gümrük Vergisi Muafiyeti Dışı Makine ve Teçhizat Listesi</h2>
+                <button onclick="closeEk4Modal()" class="close-btn">&times;</button>
+            </div>
+            <div class="modal-body" style="padding:20px;">
+                <div class="ek4-toolbar">
+                    <input id="ek4SearchInput" class="ek4-search-input" type="text"
+                        placeholder="Arama: kompresör, forklift, beton pompası, 8414..." />
+                    <div id="ek4Stats" class="ek4-stats">Hazırlanıyor...</div>
+                </div>
+
+                <div class="ek4-table-wrap">
+                    <table class="legal-table ek4-table">
+                        <thead>
+                            <tr>
+                                <th>Sıra</th>
+                                <th>G.T.İ.P No</th>
+                                <th>Türk Gümrük Tarife Cetveli Adı</th>
+                            </tr>
+                        </thead>
+                        <tbody id="ek4TableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- GÜMRÜK HESAP MODALI (EKLEME) -->
     <div id="customsModal" class="modal-overlay" onclick="closeCustomsModal(event)">
         <div class="modal-content"
@@ -2806,6 +2910,76 @@
             });
         }
 
+        const EK4_RENDER_LIMIT = 300;
+
+        function normalizeEk4Text(value) {
+            return normalizeTR(String(value || ''))
+                .replace(/[^a-z0-9\sğıüşöç\.]/g, ' ')
+                .replace(/\s+/g, ' ')
+                .trim();
+        }
+
+        function renderEk4Rows(records, query) {
+            const tbody = document.getElementById('ek4TableBody');
+            const stats = document.getElementById('ek4Stats');
+            if (!tbody || !stats) return;
+
+            if (!records || records.length === 0) {
+                tbody.innerHTML = '<tr><td class="ek4-empty" colspan="3">Sonuç bulunamadı. Farklı bir ifade deneyin.</td></tr>';
+                stats.textContent = query ? '0 kayıt bulundu' : 'Kayıt yok';
+                return;
+            }
+
+            const limited = records.slice(0, EK4_RENDER_LIMIT);
+            let html = '';
+            for (let i = 0; i < limited.length; i++) {
+                const row = limited[i];
+                html += '<tr>' +
+                    '<td>' + escapeHtml(row.sira) + '</td>' +
+                    '<td>' + escapeHtml(row.gtip) + '</td>' +
+                    '<td>' + escapeHtml(row.name) + '</td>' +
+                    '</tr>';
+            }
+            tbody.innerHTML = html;
+
+            const totalText = records.length + ' kayıt bulundu';
+            const limitText = records.length > EK4_RENDER_LIMIT ? (' (ilk ' + EK4_RENDER_LIMIT + ' listeleniyor)') : '';
+            stats.textContent = totalText + limitText;
+        }
+
+        function filterEk4Records(rawQuery) {
+            if (!Array.isArray(window.EK4_DATA)) return [];
+            const query = normalizeEk4Text(rawQuery);
+            if (!query) return window.EK4_DATA;
+
+            const tokens = query.split(' ').filter(Boolean);
+            return window.EK4_DATA.filter(function (item) {
+                const haystack = normalizeEk4Text([
+                    item.sira,
+                    item.gtip,
+                    item.name
+                ].join(' '));
+                return tokens.every(function (t) { return haystack.includes(t); });
+            });
+        }
+
+        function initEk4Search() {
+            const input = document.getElementById('ek4SearchInput');
+            const stats = document.getElementById('ek4Stats');
+            if (!input || !stats) return;
+
+            if (!Array.isArray(window.EK4_DATA)) {
+                stats.textContent = 'EK-4 veri dosyası yüklenemedi.';
+                return;
+            }
+
+            renderEk4Rows(window.EK4_DATA, '');
+            input.addEventListener('input', function () {
+                const result = filterEk4Records(input.value);
+                renderEk4Rows(result, input.value);
+            });
+        }
+
         /* --- SCORING SIMULATION LOGIC --- */
         function calculateScore() {
             const q1 = parseInt(document.getElementById("q1").value);
@@ -2902,8 +3076,28 @@
             setTimeout(() => modal.style.display = 'none', 300);
         }
 
+        /* --- EK-4 MODAL LOGIC --- */
+        function openEk4Modal() {
+            const modal = document.getElementById('ek4Modal');
+            modal.style.display = 'flex';
+            setTimeout(() => modal.classList.add('active'), 10);
+            const input = document.getElementById('ek4SearchInput');
+            if (input) {
+                input.focus();
+                input.select();
+            }
+        }
+
+        function closeEk4Modal(e) {
+            if (e && e.target.closest('.modal-content')) return;
+            const modal = document.getElementById('ek4Modal');
+            modal.classList.remove('active');
+            setTimeout(() => modal.style.display = 'none', 300);
+        }
+
         document.addEventListener('DOMContentLoaded', function () {
             initNaceSearch();
+            initEk4Search();
         });
 
 
@@ -3970,6 +4164,141 @@
                 .replace(/\u0307/g, ''); // Birleşik nokta (U+0307) kaldır: i̇ → i
         }
 
+        let ANALYSIS_NACE_CANDIDATES = [];
+        let ANALYSIS_SELECTED_NACE_INDEX = -1;
+
+        function escapeAnalysisHtml(value) {
+            return String(value || '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function getNaceCandidatesForAnalysis(inputText, limit) {
+            if (!Array.isArray(window.NACE_DATA)) return [];
+
+            const normalized = normalizeForMatch(inputText);
+            const tokens = normalized.split(' ').filter(t => t.length >= 3).slice(0, 12);
+            const scored = [];
+
+            for (const row of window.NACE_DATA) {
+                const jobCode = normalizeForMatch(row.jobCode || '');
+                const jobName = normalizeForMatch(row.jobName || '');
+                const naceCode = normalizeForMatch(row.naceCode || '');
+                const naceName = normalizeForMatch(row.naceName || '');
+
+                let score = 0;
+                if (normalized.length >= 4 && jobName.includes(normalized)) score += 55;
+                if (normalized.length >= 4 && naceName.includes(normalized)) score += 45;
+                if (naceCode && normalized && naceCode.includes(normalized)) score += 65;
+                if (jobCode && normalized && jobCode.includes(normalized)) score += 55;
+
+                for (const token of tokens) {
+                    if (jobName.includes(token)) score += 12;
+                    if (naceName.includes(token)) score += 8;
+                    if (jobCode.includes(token)) score += 18;
+                    if (naceCode.includes(token)) score += 20;
+                }
+
+                if (score > 0) {
+                    scored.push({
+                        ...row,
+                        _score: score
+                    });
+                }
+            }
+
+            scored.sort((a, b) => b._score - a._score);
+
+            const unique = [];
+            const seen = new Set();
+            for (const item of scored) {
+                const key = (item.jobCode || '') + '|' + (item.naceCode || '');
+                if (seen.has(key)) continue;
+                seen.add(key);
+                unique.push(item);
+                if (unique.length >= (limit || 5)) break;
+            }
+
+            if (!unique.length) return [];
+            const maxScore = unique[0]._score || 1;
+
+            return unique.map(item => {
+                const ratio = item._score / maxScore;
+                const confidence = Math.max(45, Math.min(98, Math.round(55 + ratio * 43)));
+                return {
+                    ...item,
+                    confidence
+                };
+            });
+        }
+
+        function selectAnalysisNace(index) {
+            const selectedArea = document.getElementById('analysisNaceSelected');
+            if (!selectedArea) return;
+            if (!ANALYSIS_NACE_CANDIDATES.length) return;
+            if (index < 0 || index >= ANALYSIS_NACE_CANDIDATES.length) return;
+
+            ANALYSIS_SELECTED_NACE_INDEX = index;
+            const chosen = ANALYSIS_NACE_CANDIDATES[index];
+
+            const buttons = document.querySelectorAll('.analysis-nace-option');
+            buttons.forEach(btn => {
+                const idx = parseInt(btn.getAttribute('data-index'), 10);
+                const active = idx === index;
+                btn.style.borderColor = active ? '#3b82f6' : 'rgba(255,255,255,0.12)';
+                btn.style.background = active ? 'rgba(59,130,246,0.18)' : 'rgba(255,255,255,0.03)';
+            });
+
+            selectedArea.innerHTML =
+                '<div style="padding:10px; border-radius:8px; background:rgba(16,185,129,0.1); border:1px solid rgba(16,185,129,0.3); color:#bbf7d0;">' +
+                '<strong>Analize Uygulanan NACE:</strong> ' + escapeAnalysisHtml(chosen.naceCode) +
+                ' - ' + escapeAnalysisHtml(chosen.naceName) +
+                '<br><span style="font-size:0.85em; color:#86efac;">Meslek: ' +
+                escapeAnalysisHtml(chosen.jobCode) + ' / ' + escapeAnalysisHtml(chosen.jobName) +
+                '</span></div>';
+        }
+
+        function buildAnalysisNaceCard(inputText) {
+            ANALYSIS_NACE_CANDIDATES = getNaceCandidatesForAnalysis(inputText, 5);
+            ANALYSIS_SELECTED_NACE_INDEX = ANALYSIS_NACE_CANDIDATES.length ? 0 : -1;
+
+            if (!ANALYSIS_NACE_CANDIDATES.length) {
+                return `
+                <div class="info-card" style="margin-top:20px; border-left:4px solid #475569; background: rgba(255,255,255,0.02);">
+                    <h3 style="color:white; margin-top:0;">🔎 NACE Eşleşme Önerisi</h3>
+                    <div style="padding:10px; border-radius:8px; background:rgba(148,163,184,0.08); border:1px solid rgba(148,163,184,0.3); color:#cbd5e1;">
+                        Metinden güçlü bir NACE eşleşmesi çıkarılamadı. Daha iyi sonuç için faaliyet türünü daha açık yazın
+                        (ör. "marangozluk, ahşap kapı pencere imalatı").
+                    </div>
+                </div>`;
+            }
+
+            const optionsHtml = ANALYSIS_NACE_CANDIDATES.map((item, idx) => {
+                const active = idx === 0;
+                return `
+                <button type="button" class="analysis-nace-option" data-index="${idx}" onclick="selectAnalysisNace(${idx})"
+                    style="width:100%; text-align:left; cursor:pointer; border:1px solid ${active ? '#3b82f6' : 'rgba(255,255,255,0.12)'}; background:${active ? 'rgba(59,130,246,0.18)' : 'rgba(255,255,255,0.03)'}; color:#e2e8f0; border-radius:8px; padding:10px; margin-bottom:8px;">
+                    <div>
+                        <div>
+                            <div style="font-weight:700; color:#93c5fd;">${escapeAnalysisHtml(item.naceCode)} - ${escapeAnalysisHtml(item.jobName)}</div>
+                            <div style="font-size:0.85em; color:#cbd5e1; margin-top:4px;">${escapeAnalysisHtml(item.naceName)}</div>
+                        </div>
+                    </div>
+                </button>`;
+            }).join('');
+
+            return `
+            <div class="info-card" style="margin-top:20px; border-left:4px solid #3b82f6; background: rgba(255,255,255,0.02);">
+                <h3 style="color:white; margin-top:0;">🔎 NACE Eşleşme Önerisi (Seçimli)</h3>
+                <p style="margin-top:0; color:#93c5fd; font-size:0.9em;">Aşağıdaki adaylardan en uygun NACE kodunu seçebilirsiniz. Varsayılan olarak en yüksek güven skoru uygulanır.</p>
+                ${optionsHtml}
+                <div id="analysisNaceSelected"></div>
+            </div>`;
+        }
+
         function analyzeInvestment() {
             const input = normalizeTR(document.getElementById('investmentInput').value);
             const osbCheckbox = document.getElementById('osbCheckbox');
@@ -4270,6 +4599,13 @@
             else locationStr += " (OSB Dışı)";
 
             let sectorStr = detectedSector ? (detectedSector.ui_name || detectedSector.name) : statusText;
+            const analysisNaceCard = buildAnalysisNaceCard(input);
+
+            if (!detectedSector && ANALYSIS_NACE_CANDIDATES.length) {
+                const topNace = ANALYSIS_NACE_CANDIDATES[0];
+                sectorStr = `${topNace.jobName} (NACE ${topNace.naceCode})`;
+                warnings.push(`🔎 NACE ÖNERİSİ: Metne göre en güçlü eşleşme ${topNace.naceCode} - ${topNace.naceName}`);
+            }
 
             if (priorityStatus || statusText.includes("Teknoloji") || statusText.includes("Stratejik") || statusText.includes("Hamle")) {
                 warnings.push(`💡 HİBE DESTEĞİ NOTU: %25 Makine Hibe Desteği talep edecekseniz, alınacak makine ve teçhizatın BİRİM FİYATININ asgari 2 Milyon TL olması gerekmektedir (Madde 16).`);
@@ -4322,7 +4658,7 @@
                     <h3 style="color:white; margin-top:0;">💰 Tahmini Kazançlar</h3>
                     <ul style="list-style:none; padding:0; color:#e2e8f0; line-height:1.8;">
                         <li>✅ Katma Değer Vergisi İstisnası (Makine-teçhizat alımında)</li>
-                        <li>✅ Gümrük Vergisi Muafiyeti (EK-4 hariç)</li>
+                        <li>✅ Gümrük Vergisi Muafiyeti (<button type="button" class="ek4-inline-btn" onclick="openEk4Modal()">EK-4 hariç</button>)</li>
                         ${finalOutputRegion >= 3 || priorityStatus || statusText.includes("Hedef") || statusText.includes("Öncelikli")
                     ? `<li>✅ Kurumlar Vergisi İndirimi: %${getTaxDiscount(finalOutputRegion, statusText)}</li>`
                     : `<li style="color:#94a3b8;">❌ Kurumlar Vergisi İndirimi - (Sektörel Teşvikte 1. ve 2. bölgede uygulanmaz)</li>`}
@@ -4353,10 +4689,16 @@
                     ${warnings.map(w => `<div style="padding:10px; background:rgba(239, 68, 68, 0.15); border-left:4px solid #ef4444; color:#fca5a5; margin-bottom:5px; border-radius:4px;">${w}</div>`).join('')}
                 </div>
             ` : ''}
+
+            ${analysisNaceCard}
         `;
 
             resultDiv.innerHTML = html;
             resultDiv.style.display = 'block';
+
+            if (ANALYSIS_NACE_CANDIDATES.length) {
+                selectAnalysisNace(0);
+            }
         }
 
         function getTaxDiscount(reg, programType) {
