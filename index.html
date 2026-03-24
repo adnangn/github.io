@@ -537,6 +537,64 @@
             color: #60a5fa;
         }
 
+        .nace-toolbar {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 12px;
+            align-items: center;
+            margin-bottom: 14px;
+        }
+
+        .nace-search-input {
+            width: 100%;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            background: rgba(15, 23, 42, 0.7);
+            color: #e2e8f0;
+            padding: 11px 12px;
+            border-radius: 8px;
+            outline: none;
+            font-size: 0.95rem;
+        }
+
+        .nace-search-input:focus {
+            border-color: var(--accent-color);
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+        }
+
+        .nace-stats {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            white-space: nowrap;
+        }
+
+        .nace-table-wrap {
+            overflow: auto;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 10px;
+            max-height: 58vh;
+        }
+
+        .nace-table {
+            margin-top: 0;
+            min-width: 880px;
+        }
+
+        .nace-empty {
+            text-align: center;
+            color: #94a3b8;
+            padding: 20px;
+        }
+
+        @media (max-width: 860px) {
+            .nace-toolbar {
+                grid-template-columns: 1fr;
+            }
+
+            .nace-stats {
+                white-space: normal;
+            }
+        }
+
 
         /* --- TABBED MODAL STYLES --- */
         /* --- TOP NAVIGATION NEW LAYOUT --- */
@@ -773,6 +831,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="./nace-data.js"></script>
 </head>
 
 <body>
@@ -856,6 +915,7 @@
                     <button class="tab-btn" onclick="openTab('tab-mali')">Mali Destek</button>
                     <button class="tab-btn" onclick="openTab('tab-kisit')">Kısıtlamalar</button>
                     <button class="tab-btn" onclick="openTab('tab-yukum')">Yükümlülükler</button>
+                    <button class="tab-btn" onclick="openTab('tab-nace')">NACE Kod Arama</button>
                 </div>
 
                 <!-- SAĞ İÇERİK ALANI -->
@@ -1764,6 +1824,38 @@
                         </div>
                     </div>
 
+                    <!-- NACE ARAMA -->
+                    <div id="tab-nace" class="tab-pane">
+                        <h3>NACE Meslek Kodu ve Tanımı Arama</h3>
+                        <p class="section-alert"
+                            style="background:rgba(16,185,129,0.08); border-left:4px solid #10b981; color:#86efac; padding:15px; border-radius:4px;">
+                            <strong>Canlı Arama:</strong> Meslek veya faaliyet adı yazın. Örneğin <strong>marangozluk</strong>
+                            yazdığınızda ilgili NACE kodları ve açıklamaları anlık olarak listelenir.
+                        </p>
+
+                        <div class="info-card">
+                            <div class="nace-toolbar">
+                                <input id="naceSearchInput" class="nace-search-input" type="text"
+                                    placeholder="Arama: marangozluk, kerestecilik, ikinci el eşya, 16.11.01" />
+                                <div id="naceStats" class="nace-stats">Hazırlanıyor...</div>
+                            </div>
+
+                            <div class="nace-table-wrap">
+                                <table class="legal-table nace-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Meslek Kodu</th>
+                                            <th>Meslek Tanımı</th>
+                                            <th>NACE Kodu</th>
+                                            <th>NACE Rev.2.1 Tanım</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="naceTableBody"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
                 </div> <!-- tab-content-area kapanış -->
             </div> <!-- tab-body kapanış -->
         </div> <!-- modal-content kapanış -->
@@ -2632,6 +2724,88 @@
             if (contentArea) contentArea.scrollTop = 0;
         }
 
+        const NACE_RENDER_LIMIT = 250;
+
+        function escapeHtml(value) {
+            return String(value || '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function normalizeNaceText(value) {
+            return normalizeTR(String(value || ''))
+                .replace(/\s+/g, ' ')
+                .trim();
+        }
+
+        function renderNaceRows(records, query) {
+            const tbody = document.getElementById('naceTableBody');
+            const stats = document.getElementById('naceStats');
+            if (!tbody || !stats) return;
+
+            if (!records || records.length === 0) {
+                tbody.innerHTML = '<tr><td class="nace-empty" colspan="4">Sonuç bulunamadı. Farklı bir anahtar kelime deneyin.</td></tr>';
+                stats.textContent = query ? '0 kayıt bulundu' : 'Kayıt yok';
+                return;
+            }
+
+            const limited = records.slice(0, NACE_RENDER_LIMIT);
+            let html = '';
+            for (let i = 0; i < limited.length; i++) {
+                const row = limited[i];
+                html += '<tr>' +
+                    '<td>' + escapeHtml(row.jobCode) + '</td>' +
+                    '<td>' + escapeHtml(row.jobName) + '</td>' +
+                    '<td>' + escapeHtml(row.naceCode) + '</td>' +
+                    '<td>' + escapeHtml(row.naceName) + '</td>' +
+                    '</tr>';
+            }
+            tbody.innerHTML = html;
+
+            const totalText = records.length + ' kayıt bulundu';
+            const limitText = records.length > NACE_RENDER_LIMIT ? (' (ilk ' + NACE_RENDER_LIMIT + ' listeleniyor)') : '';
+            stats.textContent = totalText + limitText;
+        }
+
+        function filterNaceRecords(rawQuery) {
+            if (!Array.isArray(window.NACE_DATA)) return [];
+            const query = normalizeNaceText(rawQuery);
+            if (!query) return window.NACE_DATA;
+
+            const tokens = query.split(' ').filter(Boolean);
+            return window.NACE_DATA.filter(function (item) {
+                const haystack = normalizeNaceText([
+                    item.sectorCode,
+                    item.sectorName,
+                    item.jobCode,
+                    item.jobName,
+                    item.naceCode,
+                    item.naceName
+                ].join(' '));
+                return tokens.every(function (t) { return haystack.includes(t); });
+            });
+        }
+
+        function initNaceSearch() {
+            const input = document.getElementById('naceSearchInput');
+            const stats = document.getElementById('naceStats');
+            if (!input || !stats) return;
+
+            if (!Array.isArray(window.NACE_DATA)) {
+                stats.textContent = 'NACE veri dosyası yüklenemedi.';
+                return;
+            }
+
+            renderNaceRows(window.NACE_DATA, '');
+            input.addEventListener('input', function () {
+                const result = filterNaceRecords(input.value);
+                renderNaceRows(result, input.value);
+            });
+        }
+
         /* --- SCORING SIMULATION LOGIC --- */
         function calculateScore() {
             const q1 = parseInt(document.getElementById("q1").value);
@@ -2727,6 +2901,10 @@
             modal.classList.remove('active');
             setTimeout(() => modal.style.display = 'none', 300);
         }
+
+        document.addEventListener('DOMContentLoaded', function () {
+            initNaceSearch();
+        });
 
 
     </script>
