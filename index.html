@@ -568,7 +568,8 @@
         }
 
         .nace-table-wrap {
-            overflow: auto;
+            overflow-y: auto;
+            overflow-x: hidden;
             border: 1px solid rgba(255, 255, 255, 0.08);
             border-radius: 10px;
             max-height: 58vh;
@@ -576,7 +577,39 @@
 
         .nace-table {
             margin-top: 0;
-            min-width: 880px;
+            width: 100%;
+            min-width: 0;
+            table-layout: fixed;
+            font-size: 0.84rem;
+        }
+
+        .nace-table th:nth-child(1),
+        .nace-table td:nth-child(1) {
+            width: 13%;
+        }
+
+        .nace-table th:nth-child(2),
+        .nace-table td:nth-child(2) {
+            width: 25%;
+        }
+
+        .nace-table th:nth-child(3),
+        .nace-table td:nth-child(3) {
+            width: 14%;
+        }
+
+        .nace-table th:nth-child(4),
+        .nace-table td:nth-child(4) {
+            width: 48%;
+        }
+
+        .nace-table th,
+        .nace-table td {
+            white-space: normal;
+            overflow-wrap: anywhere;
+            word-break: break-word;
+            vertical-align: top;
+            padding: 10px;
         }
 
         .nace-empty {
@@ -592,6 +625,10 @@
 
             .nace-stats {
                 white-space: normal;
+            }
+
+            .nace-table {
+                font-size: 0.78rem;
             }
         }
 
