@@ -1,0 +1,1135 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <title>HD GİB Fatura & YTB Denetim Paneli</title>
+    <style>
+        body { 
+            font-family: 'Inter', 'Segoe UI', sans-serif; 
+            margin: 0; 
+            display: flex; 
+            flex-direction: column; 
+            height: 100vh; 
+            background: linear-gradient(135deg, #0f0f23 0%, #1a1a2e 100%); 
+            color: #e0e0e0; 
+            overflow: hidden; 
+            transition: all 0.3s ease;
+        }
+        .header { 
+            background: linear-gradient(90deg, #16213e 0%, #0f3460 100%); 
+            padding: 15px 25px; 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            border-bottom: 1px solid #333; 
+            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+        }
+        .main { display: flex; flex: 1; overflow: hidden; }
+        
+        .panel-editor { 
+            width: 320px; 
+            display: flex; 
+            flex-direction: column; 
+            background: linear-gradient(180deg, #1e1e2e 0%, #2a2a3e 100%); 
+            border-right: 1px solid #444; 
+            transition: all 0.3s ease; 
+            position: relative; 
+            box-shadow: inset 0 0 20px rgba(0,0,0,0.5);
+        }
+        .panel-editor.dragover { 
+            border: 2px dashed #00d4aa; 
+            background: linear-gradient(180deg, #1a2e2a 0%, #2a3e3a 100%); 
+            box-shadow: 0 0 20px rgba(0,212,170,0.3);
+        }
+        .panel-editor.dragover textarea { background: transparent; }
+        
+        .file-upload-bar { 
+            padding: 20px; 
+            background: linear-gradient(90deg, #2d2d3d 0%, #3d3d4d 100%); 
+            text-align: center; 
+            border-bottom: 1px solid #444; 
+            font-size: 14px; 
+            border-radius: 0 0 10px 10px;
+        }
+        .file-upload-label { 
+            cursor: pointer; 
+            color: #00d4aa; 
+            font-weight: 600; 
+            text-decoration: none; 
+            padding: 8px 12px; 
+            border-radius: 5px; 
+            transition: all 0.2s ease;
+            background: rgba(0,212,170,0.1);
+        }
+        .file-upload-label:hover { 
+            color: #fff; 
+            background: rgba(0,212,170,0.3); 
+            transform: scale(1.05);
+        }
+        
+        textarea { 
+            flex: 1; 
+            border: none; 
+            padding: 20px; 
+            font-family: 'Fira Code', 'Consolas', monospace; 
+            font-size: 12px; 
+            background: #0d0d1a; 
+            color: #00ff88; 
+            resize: none; 
+            outline: none; 
+            border-radius: 0 0 10px 10px;
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.5);
+        }
+
+        .panel-preview { 
+            flex: 1; 
+            overflow: auto; 
+            background: #f8f9fa; 
+            padding: 40px; 
+            display: flex; 
+            justify-content: center; 
+            align-items: flex-start; 
+            transition: all 0.3s ease;
+        }
+        
+        #render-wrapper {
+            background: white;
+            width: 100%; 
+            max-width: 1000px; 
+            min-height: 297mm;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            position: relative;
+            box-sizing: border-box;
+            padding: 25px; 
+            overflow: visible; 
+            border-radius: 10px;
+            transition: all 0.3s ease;
+        }
+
+        #invoiceContent { 
+            width: 100%;
+            background: white;
+            color: #000 !important;
+            -webkit-font-smoothing: antialiased;
+            border-radius: 5px;
+        }
+
+        #invoiceContent table { width: 100% !important; table-layout: auto !important; max-width: 100% !important; }
+        #invoiceContent td, #invoiceContent th { white-space: normal !important; word-wrap: break-word !important; overflow-wrap: break-word !important; } 
+
+        .panel-audit { 
+            width: 380px; 
+            background: linear-gradient(180deg, #1e1e2e 0%, #2a2a3e 100%); 
+            border-left: 1px solid #444; 
+            display: flex; 
+            flex-direction: column; 
+            overflow-y: auto; 
+            box-shadow: inset 0 0 20px rgba(0,0,0,0.5);
+            transition: width 0.5s ease, opacity 0.5s ease;
+        }
+        .panel-audit.hidden { 
+            width: 0; 
+            opacity: 0; 
+            overflow: hidden;
+        }
+        .audit-header { 
+            background: linear-gradient(90deg, #e74c3c 0%, #c0392b 100%); 
+            color: #fff; 
+            padding: 20px; 
+            text-align: center; 
+            font-weight: bold; 
+            border-bottom: 2px solid #e67e22; 
+            border-radius: 0 0 10px 10px;
+        }
+        .audit-section { 
+            padding: 20px; 
+            border-bottom: 1px solid #444; 
+            transition: all 0.3s ease;
+        }
+        .audit-section:hover { background: rgba(255,255,255,0.02); }
+        .audit-title { 
+            font-weight: bold; 
+            margin-bottom: 15px; 
+            color: #f39c12; 
+            font-size: 15px; 
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .found-item { 
+            color: #00d4aa; 
+            margin-bottom: 8px; 
+            font-size: 14px; 
+            font-weight: 500; 
+            display: flex; 
+            align-items: center;
+        }
+        .found-item:before { content: '✓'; margin-right: 8px; font-size: 16px; }
+        .missing-item { 
+            color: #e74c3c; 
+            margin-bottom: 8px; 
+            font-size: 14px; 
+            display: flex; 
+            align-items: center;
+        }
+        .missing-item:before { content: '✗'; margin-right: 8px; font-size: 16px; }
+        
+        .alert-box { 
+            border: 2px solid #e74c3c; 
+            background: linear-gradient(135deg, rgba(231,76,60,0.1) 0%, rgba(192,57,43,0.1) 100%); 
+            color: #ff6b6b; 
+            padding: 15px; 
+            font-weight: bold; 
+            text-align: center; 
+            border-radius: 8px; 
+            margin-top: 15px; 
+            box-shadow: 0 4px 15px rgba(231,76,60,0.2);
+        }
+        .success-box { 
+            border: 2px solid #00d4aa; 
+            background: linear-gradient(135deg, rgba(0,212,170,0.1) 0%, rgba(0,150,136,0.1) 100%); 
+            color: #00d4aa; 
+            padding: 15px; 
+            font-weight: bold; 
+            text-align: center; 
+            border-radius: 8px; 
+            margin-top: 15px; 
+            box-shadow: 0 4px 15px rgba(0,212,170,0.2);
+        }
+        .details-box { 
+            font-family: 'Fira Code', monospace; 
+            font-size: 12px; 
+            background: #0d0d1a; 
+            padding: 15px; 
+            color: #ccc; 
+            margin-top: 15px; 
+            border-radius: 8px; 
+            border: 1px solid #444;
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.5);
+        }
+
+        @keyframes pulse-green { 
+            0% { background-color: transparent; transform: scale(1); } 
+            50% { background-color: rgba(0,212,170,0.4); transform: scale(1.05); } 
+            100% { background-color: transparent; transform: scale(1); } 
+        }
+        .pulse-effect { 
+            animation: pulse-green 2s infinite; 
+            font-weight: bold; 
+            border-radius: 3px; 
+            padding: 2px 4px; 
+            background: rgba(0,212,170,0.2);
+            transition: all 0.3s ease;
+        }
+
+        button { 
+            cursor: pointer; 
+            padding: 12px 24px; 
+            background: linear-gradient(90deg, #00d4aa 0%, #00a085 100%); 
+            color: white; 
+            border: none; 
+            border-radius: 8px; 
+            font-weight: 600; 
+            font-size: 14px; 
+            transition: all 0.3s ease; 
+            box-shadow: 0 4px 15px rgba(0,212,170,0.3);
+        }
+        button:hover { 
+            background: linear-gradient(90deg, #00a085 0%, #00796b 100%); 
+            transform: translateY(-2px); 
+            box-shadow: 0 6px 20px rgba(0,212,170,0.4);
+        }
+        .status { 
+            font-size: 13px; 
+            color: #f39c12; 
+            margin-right: 20px; 
+            font-weight: 500;
+        }
+
+        @media print {
+            @page { size: A4 portrait; margin: 0; }
+            body { background: #fff; margin: 0; padding: 0; zoom: 0.85; }
+            .header, .panel-editor, .panel-audit { display: none !important; }
+            .main { display: block !important; overflow: visible !important; height: auto !important; }
+            .panel-preview { padding: 0 !important; display: block !important; overflow: visible !important; background: #fff !important; }
+            #render-wrapper { box-shadow: none !important; width: 100% !important; max-width: none !important; padding: 10mm !important; margin: 0 !important; border: none !important; page-break-inside: avoid !important; }
+            #invoiceContent { width: 100% !important; transform: none !important; }
+            #invoiceContent table { width: 100% !important; }
+            #invoiceContent table, #invoiceContent tr, #invoiceContent td, #invoiceContent th { page-break-inside: avoid !important; }
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            font-family: 'Segoe UI Variable Text', 'Inter', 'Aptos', 'Segoe UI', sans-serif;
+            color: #0f172a;
+            background:
+                radial-gradient(circle at top left, rgba(37, 99, 235, 0.12), transparent 28%),
+                radial-gradient(circle at bottom right, rgba(16, 185, 129, 0.10), transparent 26%),
+                linear-gradient(180deg, #f8fafc 0%, #edf2f7 100%);
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            background: linear-gradient(120deg, rgba(255, 255, 255, 0.45), transparent 35%);
+            opacity: 0.8;
+        }
+
+        .header {
+            position: relative;
+            z-index: 2;
+            margin: 18px 18px 0;
+            padding: 16px 18px;
+            background: rgba(255, 255, 255, 0.78);
+            backdrop-filter: blur(18px);
+            -webkit-backdrop-filter: blur(18px);
+            border: 1px solid rgba(15, 23, 42, 0.08);
+            border-radius: 24px;
+            box-shadow: 0 18px 55px rgba(15, 23, 42, 0.10);
+            gap: 18px;
+        }
+
+        .header-brand {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            min-width: 0;
+        }
+
+        .header-title {
+            font-size: 18px;
+            line-height: 1.2;
+            font-weight: 700;
+            letter-spacing: -0.03em;
+            color: #0f172a;
+        }
+
+        .header-subtitle {
+            font-size: 12px;
+            color: #64748b;
+            line-height: 1.4;
+        }
+
+        .header-actions {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .status {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            min-height: 40px;
+            padding: 0 14px;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.75);
+            border: 1px solid rgba(15, 23, 42, 0.08);
+            color: #475569;
+            font-size: 12px;
+            font-weight: 600;
+            letter-spacing: 0.01em;
+            margin-right: 0;
+            box-shadow: 0 10px 22px rgba(15, 23, 42, 0.06);
+        }
+
+        .status::before {
+            content: '';
+            width: 8px;
+            height: 8px;
+            border-radius: 999px;
+            background: linear-gradient(180deg, #f59e0b, #f97316);
+            box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.12);
+        }
+
+        button {
+            appearance: none;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            min-height: 40px;
+            padding: 0 16px;
+            border: 1px solid transparent;
+            border-radius: 999px;
+            color: #fff;
+            font-size: 13px;
+            font-weight: 600;
+            letter-spacing: 0.01em;
+            transition: transform 0.22s ease, box-shadow 0.22s ease, background 0.22s ease, opacity 0.22s ease;
+            box-shadow: 0 14px 28px rgba(15, 23, 42, 0.12);
+        }
+
+        button:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 18px 32px rgba(15, 23, 42, 0.16);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        button:focus-visible {
+            outline: 2px solid rgba(37, 99, 235, 0.35);
+            outline-offset: 2px;
+        }
+
+        #toggleAudit {
+            background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+        }
+
+        #toggleAudit:hover {
+            background: linear-gradient(135deg, #1d4ed8 0%, #1e40af 100%);
+        }
+
+        #printButton {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+        }
+
+        #printButton:hover {
+            background: linear-gradient(135deg, #059669 0%, #047857 100%);
+        }
+
+        .main {
+            display: flex;
+            flex: 1;
+            min-height: 0;
+            overflow: hidden;
+            gap: 18px;
+            padding: 18px;
+        }
+
+        .panel-editor,
+        .panel-preview,
+        .panel-audit {
+            border: 1px solid rgba(15, 23, 42, 0.08);
+            border-radius: 24px;
+            box-shadow: 0 18px 50px rgba(15, 23, 42, 0.10);
+        }
+
+        .panel-editor {
+            width: 320px;
+            min-width: 300px;
+            flex-shrink: 0;
+            background: rgba(255, 255, 255, 0.82);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            overflow: hidden;
+            box-shadow: 0 18px 50px rgba(15, 23, 42, 0.10);
+        }
+
+        .panel-editor.dragover {
+            border-color: rgba(16, 185, 129, 0.5);
+            background: rgba(236, 253, 245, 0.92);
+            box-shadow: 0 18px 50px rgba(16, 185, 129, 0.14);
+        }
+
+        .file-upload-bar {
+            padding: 18px 20px;
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(248, 250, 252, 0.96));
+            text-align: center;
+            border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+            font-size: 13px;
+            color: #64748b;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .file-upload-label {
+            cursor: pointer;
+            color: #0f172a;
+            font-weight: 700;
+            text-decoration: none;
+            padding: 10px 14px;
+            border-radius: 999px;
+            border: 1px solid rgba(37, 99, 235, 0.16);
+            background: rgba(37, 99, 235, 0.06);
+            transition: all 0.22s ease;
+        }
+
+        .file-upload-label:hover {
+            color: #1d4ed8;
+            background: rgba(37, 99, 235, 0.10);
+            border-color: rgba(37, 99, 235, 0.24);
+            transform: translateY(-1px);
+        }
+
+        .upload-hint {
+            color: #94a3b8;
+            font-size: 12px;
+        }
+
+        textarea {
+            flex: 1;
+            border: none;
+            padding: 18px 18px 20px;
+            font-family: 'Cascadia Mono', 'SFMono-Regular', Consolas, 'Fira Code', monospace;
+            font-size: 12.5px;
+            line-height: 1.55;
+            background: linear-gradient(180deg, #0f172a 0%, #111827 100%);
+            color: #a7f3d0;
+            resize: none;
+            outline: none;
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+        }
+
+        textarea::placeholder {
+            color: rgba(255, 255, 255, 0.42);
+        }
+
+        .panel-preview {
+            flex: 1;
+            min-width: 0;
+            overflow: auto;
+            background:
+                linear-gradient(180deg, rgba(248, 250, 252, 0.90), rgba(241, 245, 249, 0.96));
+            padding: 24px;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+        }
+
+        #render-wrapper {
+            background: white;
+            width: 100%;
+            max-width: 1080px;
+            min-height: 297mm;
+            box-shadow: 0 24px 80px rgba(15, 23, 42, 0.10);
+            position: relative;
+            box-sizing: border-box;
+            padding: 28px;
+            overflow: hidden;
+            border-radius: 28px;
+            border: 1px solid rgba(15, 23, 42, 0.08);
+        }
+
+        #render-wrapper::before {
+            content: '';
+            position: absolute;
+            inset: 0 auto auto 0;
+            width: 100%;
+            height: 4px;
+            background: linear-gradient(90deg, #2563eb 0%, #10b981 50%, #f59e0b 100%);
+        }
+
+        #invoiceContent {
+            width: 100%;
+            background: white;
+            color: #000 !important;
+            -webkit-font-smoothing: antialiased;
+            border-radius: 16px;
+        }
+
+        .empty-state {
+            min-height: 320px;
+            display: grid;
+            place-items: center;
+            gap: 10px;
+            padding: 72px 24px;
+            text-align: center;
+            color: #64748b;
+            border: 1px dashed rgba(37, 99, 235, 0.18);
+            border-radius: 22px;
+            background: linear-gradient(180deg, rgba(248, 250, 252, 0.96), rgba(255, 255, 255, 1));
+        }
+
+        .empty-state h2 {
+            margin: 0;
+            color: #0f172a;
+            font-size: 28px;
+            line-height: 1.1;
+            letter-spacing: -0.03em;
+        }
+
+        .empty-state p {
+            margin: 0;
+            max-width: 380px;
+            line-height: 1.6;
+            font-size: 14px;
+            color: #64748b;
+        }
+
+        #invoiceContent table { width: 100% !important; table-layout: auto !important; max-width: 100% !important; }
+        #invoiceContent td, #invoiceContent th { white-space: normal !important; word-wrap: break-word !important; overflow-wrap: break-word !important; }
+
+        .panel-audit {
+            width: 360px;
+            min-width: 360px;
+            flex-shrink: 0;
+            background: rgba(255, 255, 255, 0.82);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border-left: 1px solid rgba(15, 23, 42, 0.06);
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+            box-shadow: 0 18px 50px rgba(15, 23, 42, 0.10);
+            transition: width 0.35s ease, opacity 0.30s ease, padding 0.35s ease, margin 0.35s ease, border-color 0.35s ease, transform 0.35s ease;
+        }
+
+        .panel-audit.hidden {
+            width: 0;
+            min-width: 0;
+            opacity: 0;
+            padding: 0;
+            margin: 0;
+            border: 0;
+            overflow: hidden;
+            pointer-events: none;
+            transform: translateX(18px);
+        }
+
+        .audit-header {
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            color: #fff;
+            padding: 18px 20px;
+            text-align: left;
+            font-weight: 700;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            font-size: 12px;
+        }
+
+        .audit-section {
+            padding: 18px 20px;
+            border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+            transition: background 0.25s ease;
+        }
+
+        .audit-section:hover {
+            background: rgba(248, 250, 252, 0.95);
+        }
+
+        .audit-section:last-child {
+            border-bottom: none;
+        }
+
+        .audit-title {
+            font-weight: 700;
+            margin-bottom: 12px;
+            color: #0f172a;
+            font-size: 13px;
+            letter-spacing: 0.01em;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .audit-title::before {
+            content: '';
+            width: 8px;
+            height: 8px;
+            border-radius: 999px;
+            background: linear-gradient(180deg, #2563eb 0%, #10b981 100%);
+            flex: none;
+        }
+
+        .audit-collapse {
+            padding-top: 14px;
+        }
+
+        .audit-collapse > summary {
+            list-style: none;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            user-select: none;
+        }
+
+        .audit-collapse > summary .audit-title {
+            margin-bottom: 0;
+            flex: 1;
+        }
+
+        .audit-collapse > summary::-webkit-details-marker {
+            display: none;
+        }
+
+        .audit-summary-meta {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 11px;
+            color: #64748b;
+            padding: 6px 10px;
+            border-radius: 999px;
+            background: rgba(37, 99, 235, 0.06);
+            border: 1px solid rgba(37, 99, 235, 0.10);
+            white-space: nowrap;
+        }
+
+        .audit-summary::after {
+            content: '−';
+            margin-left: auto;
+            color: #64748b;
+            font-size: 18px;
+            line-height: 1;
+        }
+
+        .audit-collapse:not([open]) .audit-summary::after {
+            content: '+';
+        }
+
+        .audit-collapse-body {
+            margin-top: 14px;
+        }
+
+        .audit-collapse:not([open]) .audit-collapse-body {
+            display: none;
+        }
+
+        .audit-missing {
+            margin-top: 16px;
+            padding-top: 14px;
+            border-top: 1px solid rgba(15, 23, 42, 0.06);
+        }
+
+        .audit-math-result {
+            color: #475569;
+            font-size: 12px;
+        }
+
+        .found-item,
+        .missing-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 8px;
+            padding: 10px 12px;
+            border-radius: 14px;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .found-item {
+            color: #065f46;
+            background: rgba(16, 185, 129, 0.08);
+            border: 1px solid rgba(16, 185, 129, 0.14);
+        }
+
+        .found-item:before {
+            content: '✓';
+            display: inline-grid;
+            place-items: center;
+            width: 20px;
+            height: 20px;
+            border-radius: 999px;
+            background: rgba(16, 185, 129, 0.18);
+            color: #047857;
+            flex: none;
+            font-size: 12px;
+        }
+
+        .missing-item {
+            color: #991b1b;
+            background: rgba(239, 68, 68, 0.07);
+            border: 1px solid rgba(239, 68, 68, 0.14);
+        }
+
+        .missing-item:before {
+            content: '!';
+            display: inline-grid;
+            place-items: center;
+            width: 20px;
+            height: 20px;
+            border-radius: 999px;
+            background: rgba(239, 68, 68, 0.14);
+            color: #b91c1c;
+            flex: none;
+            font-size: 12px;
+        }
+
+        .alert-box,
+        .success-box {
+            border-radius: 18px;
+            padding: 16px;
+            font-weight: 600;
+            text-align: center;
+            line-height: 1.45;
+            margin-top: 14px;
+        }
+
+        .alert-box {
+            border: 1px solid rgba(239, 68, 68, 0.18);
+            color: #991b1b;
+            background: linear-gradient(180deg, rgba(254, 242, 242, 0.95), rgba(255, 255, 255, 0.98));
+            box-shadow: 0 12px 30px rgba(239, 68, 68, 0.08);
+        }
+
+        .success-box {
+            border: 1px solid rgba(16, 185, 129, 0.18);
+            color: #065f46;
+            background: linear-gradient(180deg, rgba(236, 253, 245, 0.96), rgba(255, 255, 255, 0.98));
+            box-shadow: 0 12px 30px rgba(16, 185, 129, 0.08);
+        }
+
+        .details-box {
+            font-family: 'Cascadia Mono', 'SFMono-Regular', Consolas, monospace;
+            font-size: 11.5px;
+            background: #f8fafc;
+            padding: 14px;
+            color: #475569;
+            margin-top: 14px;
+            border-radius: 14px;
+            border: 1px solid rgba(15, 23, 42, 0.08);
+            line-height: 1.6;
+        }
+
+        @keyframes pulse-green {
+            0% { background-color: rgba(16, 185, 129, 0.10); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.00); }
+            50% { background-color: rgba(16, 185, 129, 0.22); box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.08); }
+            100% { background-color: rgba(16, 185, 129, 0.10); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.00); }
+        }
+
+        .pulse-effect {
+            animation: pulse-green 2s ease-in-out infinite;
+            font-weight: 700;
+            border-radius: 6px;
+            padding: 2px 4px;
+            background: rgba(16, 185, 129, 0.12);
+        }
+
+        ::selection {
+            background: rgba(37, 99, 235, 0.16);
+            color: #0f172a;
+        }
+
+        .panel-editor::-webkit-scrollbar,
+        .panel-preview::-webkit-scrollbar,
+        .panel-audit::-webkit-scrollbar {
+            width: 10px;
+            height: 10px;
+        }
+
+        .panel-editor::-webkit-scrollbar-thumb,
+        .panel-preview::-webkit-scrollbar-thumb,
+        .panel-audit::-webkit-scrollbar-thumb {
+            background: rgba(15, 23, 42, 0.18);
+            border-radius: 999px;
+            border: 3px solid transparent;
+            background-clip: content-box;
+        }
+
+        .panel-editor::-webkit-scrollbar-track,
+        .panel-preview::-webkit-scrollbar-track,
+        .panel-audit::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        @media (max-width: 1280px) {
+            body {
+                overflow: auto;
+            }
+
+            .header {
+                margin: 12px 12px 0;
+            }
+
+            .main {
+                flex-direction: column;
+                padding: 12px;
+                overflow: visible;
+            }
+
+            .panel-editor,
+            .panel-audit {
+                width: 100%;
+                min-width: 0;
+            }
+
+            .panel-preview {
+                min-height: 60vh;
+            }
+        }
+
+        @media (max-width: 900px) {
+            .header {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .header-actions {
+                justify-content: flex-start;
+            }
+
+            .header-title {
+                font-size: 17px;
+            }
+
+            .panel-preview {
+                padding: 12px;
+            }
+
+            #render-wrapper {
+                padding: 18px;
+                border-radius: 22px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <div class="header-brand">
+        <div class="header-title">GİB XSLT Renderer + YTB Denetim Motoru</div>
+        <div class="header-subtitle">XML yükle, denetle ve çıktıyı sade bir görünümle izle</div>
+    </div>
+    <div class="header-actions">
+        <span id="scaleStatus" class="status">Sistem Bekleniyor...</span>
+        <button id="toggleAudit">Denetim Paneli</button>
+        <button id="printButton" onclick="window.print()">Yazdır / PDF</button>
+    </div>
+</div>
+
+<div class="main">
+    <div class="panel-editor" id="dropZone">
+        <div class="file-upload-bar">
+            <label for="fileInput" class="file-upload-label">📁 XML Dosyası Seç</label>
+            <span class="upload-hint">veya buraya sürükle</span>
+            <input type="file" id="fileInput" accept=".xml" style="display:none;">
+        </div>
+        <textarea id="xmlInput" placeholder="UBL-TR XML Kodunu Buraya Yapıştırın veya Dosyayı Sürükleyin..." oninput="processInvoice()"></textarea>
+    </div>
+
+    <div class="panel-preview">
+        <div id="render-wrapper">
+            <div id="invoiceContent">
+                <div class="empty-state">
+                    <h2>Sistem Hazır</h2>
+                    <p>XML dosyasını sol panele sürükleyin veya kodu yapıştırın.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="panel-audit">
+        <div class="audit-header">YTB DENETİM PANELİ</div>
+        <details class="audit-section audit-collapse">
+            <summary class="audit-summary">
+                <div class="audit-title">1. METİN KONTROLÜ</div>
+                <span class="audit-summary-meta">Açık / Kapat</span>
+            </summary>
+            <div class="audit-collapse-body">
+                <div id="audit-found"></div>
+                <div id="audit-missing" class="audit-missing"></div>
+            </div>
+        </details>
+        <div class="audit-section">
+            <div class="audit-title">2. KDV 13/d KONTROLÜ</div>
+            <div id="audit-math-result" class="audit-math-result">XML bekleniyor...</div>
+            <div id="audit-math-details" class="details-box"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const AUDIT_KEYWORDS = ['YATIRIMTEŞVİK', 'YATIRIM', 'YATİRİM', 'İSTİSNA', 'ISTISNA', 'Tesvşk', 'Teşvik', '3065 sayılı', '13/d', 'YTB'];
+    const REQUIRED_KEYWORDS = ['Yeni', 'Kullanılmamış', 'KUllanılmamış']; // "Kullanılmamıştır" kök kelimeye indirgendi.
+
+    // 1. KUSURSUZ ARAMA NORMALİZATÖRÜ (Tüm boşlukları, tireleri ve Türkçe harfleri düzleştirir)
+    function normalizeForSearch(text) {
+        if (!text) return "";
+        return text.replace(/i/g, 'İ')
+                   .replace(/ı/g, 'I')
+                   .toLocaleUpperCase('tr-TR')
+                   .replace(/Ş/g, 'S')
+                   .replace(/Ç/g, 'C')
+                   .replace(/Ğ/g, 'G')
+                   .replace(/Ö/g, 'O')
+                   .replace(/Ü/g, 'U')
+                   .replace(/İ/g, 'I')
+                   .replace(/[\s\-\_\/]/g, ''); // Tüm boşluk ve sembolleri yutar
+    }
+
+    function escapeRegExp(string) {
+        return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
+    // 2. GÖRSEL VURGULAMA İÇİN ESNETİLMİŞ REGEX (Araya giren boşlukları tolere eder)
+    function createTrRegex(word) {
+        const cleanWord = word.replace(/[\s\-\/]/g, ''); 
+        let pattern = '';
+        for (let i = 0; i < cleanWord.length; i++) {
+            let char = cleanWord[i].toUpperCase();
+            if (i > 0) pattern += '[\\s\\-\\/]*'; // Harflerin arasına opsiyonel boşluk/tire girebilir
+            
+            if (char === 'I' || char === 'İ') pattern += '[iİıI]';
+            else if (char === 'S' || char === 'Ş') pattern += '[sSşŞ]';
+            else if (char === 'C' || char === 'Ç') pattern += '[cCçÇ]';
+            else if (char === 'G' || char === 'Ğ') pattern += '[gGğĞ]';
+            else if (char === 'O' || char === 'Ö') pattern += '[oOöÖ]';
+            else if (char === 'U' || char === 'Ü') pattern += '[uUüÜ]';
+            else pattern += escapeRegExp(char); 
+        }
+        // Sadece düz metinlerde (HTML etiketlerinin dışında) arama yap
+        return new RegExp(`(?![^<]*>)(${pattern})`, 'gi'); 
+    }
+
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('fileInput');
+    const xmlInput = document.getElementById('xmlInput');
+    const toggleAuditBtn = document.getElementById('toggleAudit');
+    const panelAudit = document.querySelector('.panel-audit');
+
+    toggleAuditBtn.addEventListener('click', () => {
+        panelAudit.classList.toggle('hidden');
+        toggleAuditBtn.textContent = panelAudit.classList.contains('hidden') ? 'Denetim Panelini Aç' : 'Denetim Paneli';
+    });
+
+    dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
+    dropZone.addEventListener('dragleave', () => { dropZone.classList.remove('dragover'); });
+    dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('dragover');
+        if (e.dataTransfer.files.length > 0) handleFile(e.dataTransfer.files[0]);
+    });
+
+    fileInput.addEventListener('change', (e) => {
+        if (e.target.files.length > 0) handleFile(e.target.files[0]);
+    });
+
+    function handleFile(file) {
+        if (file.type !== "text/xml" && !file.name.toLowerCase().endsWith('.xml')) {
+            alert("Lütfen geçerli bir XML (.xml) dosyası yükleyin.");
+            return;
+        }
+        const reader = new FileReader();
+        reader.onload = (e) => { xmlInput.value = e.target.result; processInvoice(); };
+        reader.onerror = () => { alert("Dosya okunurken bir hata oluştu."); };
+        reader.readAsText(file);
+    }
+
+    function getXmlValue(xmlDoc, tagName) {
+        const nodes = xmlDoc.getElementsByTagNameNS("*", tagName);
+        return nodes.length > 0 ? nodes[0].textContent.trim() : "0";
+    }
+
+    async function processInvoice() {
+        let xmlText = xmlInput.value.trim();
+        const container = document.getElementById('invoiceContent');
+        const statusText = document.getElementById('scaleStatus');
+        
+        if (!xmlText) return;
+
+        xmlText = xmlText.replace(/This XML file does not appear to have any style information associated with it\. The document tree is shown below\./g, '');
+
+        try {
+            const parser = new DOMParser();
+            const xmlDoc = parser.parseFromString(xmlText, "text/xml");
+            
+            if (xmlDoc.getElementsByTagName("parsererror").length > 0) {
+                statusText.innerText = "Hata: Geçersiz XML Formatı!";
+                return;
+            }
+
+            const xsltNode = xmlDoc.getElementsByTagNameNS("*", "EmbeddedDocumentBinaryObject")[0];
+            if (xsltNode) {
+                const arr = Uint8Array.from(atob(xsltNode.textContent.trim()), c => c.charCodeAt(0));
+                const utf8Xslt = new TextDecoder("utf-8").decode(arr);
+                const xsltDoc = parser.parseFromString(utf8Xslt, "text/xml");
+
+                const processor = new XSLTProcessor();
+                processor.importStylesheet(xsltDoc);
+                const resultFragment = processor.transformToFragment(xmlDoc, document);
+
+                container.innerHTML = "";
+                container.appendChild(resultFragment);
+
+                let htmlContent = container.innerHTML;
+                [...AUDIT_KEYWORDS, ...REQUIRED_KEYWORDS].forEach(word => {
+                    const regex = createTrRegex(word);
+                    htmlContent = htmlContent.replace(regex, `<span class="pulse-effect">$1</span>`);
+                });
+                container.innerHTML = htmlContent;
+
+                statusText.innerText = "Orijinal GİB Şablonu Yüklendi (Yazdırmaya Hazır)";
+            } else {
+                container.innerHTML = `<div style="padding:20px; color:red;">Hata: XML içinde XSLT şablonu bulunamadı.</div>`;
+            }
+
+            // 3. DAHA DERİN TARAMA (Description ve TaxExemptionReason eklendi)
+            let fullText = "";
+            const searchTags = ["Note", "Name", "Description", "TaxExemptionReason"];
+            searchTags.forEach(tag => {
+                const nodes = xmlDoc.getElementsByTagNameNS("*", tag);
+                for (let node of nodes) fullText += " " + node.textContent;
+            });
+
+            // Metni boşluksuz ve harf toleranslı hale getir
+            const searchBaseText = normalizeForSearch(fullText);
+            
+            let found = new Set();
+            let missing = [];
+
+            [...AUDIT_KEYWORDS, ...REQUIRED_KEYWORDS].forEach(word => {
+                const searchWord = normalizeForSearch(word);
+                // "YATIRIMTEŞVİK" kelimesi artık searchBaseText içinde kesinlikle yakalanacak.
+                if (searchBaseText.includes(searchWord)) {
+                    found.add(word);
+                } else {
+                    missing.push(word);
+                }
+            });
+
+            document.getElementById("audit-found").innerHTML = [...found].map(w => `<div class="found-item">✔ ${w}</div>`).join('');
+            document.getElementById("audit-missing").innerHTML = missing.map(w => `<div class="missing-item">✖ ${w}</div>`).join('');
+
+            const hasBoth = found.has("Yeni") && found.has("Kullanılmamış");
+            if (!hasBoth) {
+                document.getElementById("audit-missing").innerHTML += `<div style="color:#e74c3c; font-weight:bold; margin-top:10px; border-top:1px solid #e74c3c; padding-top:5px;">KRİTİK UYARI:<br>'Yeni' ve 'Kullanılmamış' şartı eksik!</div>`;
+            }
+
+            const extAmtStr = getXmlValue(xmlDoc, "LineExtensionAmount"); 
+            const payAmtStr = getXmlValue(xmlDoc, "PayableAmount"); 
+            
+            const taxNodes = xmlDoc.getElementsByTagNameNS("*", "TaxTotal");
+            let totalTaxAmt = 0;
+            if(taxNodes.length > 0) {
+                totalTaxAmt = parseFloat(taxNodes[0].getElementsByTagNameNS("*", "TaxAmount")[0]?.textContent || 0);
+            }
+
+            const malHizmet = parseFloat(extAmtStr || 0);
+            const odenecek = parseFloat(payAmtStr || 0);
+
+            const mathRes = document.getElementById("audit-math-result");
+            const mathDetails = document.getElementById("audit-math-details");
+
+            mathDetails.innerHTML = `Mal Hizmet: ${malHizmet.toFixed(2)}<br>Hesaplanan KDV: ${totalTaxAmt.toFixed(2)}<br>Ödenecek Tutar: ${odenecek.toFixed(2)}`;
+
+            let isYTB = AUDIT_KEYWORDS.some(w => found.has(w));
+
+            if (isYTB) {
+                if (Math.abs((malHizmet + totalTaxAmt) - odenecek) < 0.02 && totalTaxAmt > 0) {
+                    mathRes.innerHTML = `<div class="alert-box">KRİTİK HATA!<br>Hesaplanan KDV tutarı, Ödenecek Tutara DAHİL EDİLMİŞTİR!</div>`;
+                } 
+                else if (Math.abs(malHizmet - odenecek) < 0.02) {
+                    mathRes.innerHTML = `<div class="success-box">✔ MATEMATİK DOĞRU<br>KDV, Ödenecek Tutara yansıtılmamış.</div>`;
+                } 
+                else {
+                    mathRes.innerHTML = `<div style="color:#f1c40f; padding: 10px; border: 1px solid #f1c40f; margin-top: 10px;">DİKKAT<br>Tutar uyuşmazlığı var. Tevkifat/İskonto kontrol edilmeli.</div>`;
+                }
+            } else {
+                mathRes.innerHTML = `<span style="color:#aaa;">Faturada Teşvik ibaresi bulunmadığı için matematik kontrolü atlandı.</span>`;
+            }
+
+        } catch (e) {
+            statusText.innerText = "Hata oluştu.";
+            console.error(e);
+        }
+    }
+</script>
+
+</body>
+</html>
