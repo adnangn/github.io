@@ -635,6 +635,14 @@
             flex: none;
         }
 
+        .audit-subtitle {
+            margin: 14px 0 8px;
+            font-size: 12px;
+            font-weight: 700;
+            color: #334155;
+            letter-spacing: 0.01em;
+        }
+
         .audit-collapse {
             padding-top: 14px;
         }
@@ -787,6 +795,44 @@
             line-height: 1.6;
         }
 
+        .tax-amount-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 2px 10px;
+            margin: 0 2px;
+            border-radius: 999px;
+            font-weight: 700;
+            letter-spacing: 0.01em;
+            white-space: nowrap;
+            color: #fff;
+            box-shadow: 0 6px 16px rgba(15, 23, 42, 0.10);
+            vertical-align: baseline;
+        }
+
+        .tax-amount-badge.reference {
+            background: linear-gradient(135deg, #16a34a 0%, #10b981 100%);
+        }
+
+        .tax-amount-badge.line {
+            background: linear-gradient(135deg, #2563eb 0%, #06b6d4 100%);
+        }
+
+        .tax-amount-badge.zero {
+            background: linear-gradient(135deg, #64748b 0%, #475569 100%);
+        }
+
+        .tax-amount-badge.mismatch {
+            background: linear-gradient(135deg, #d97706 0%, #f59e0b 100%);
+        }
+
+        .tax-currency-badge {
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            opacity: 0.92;
+        }
+
         @keyframes pulse-green {
             0% { background-color: rgba(16, 185, 129, 0.10); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.00); }
             50% { background-color: rgba(16, 185, 129, 0.22); box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.08); }
@@ -884,7 +930,7 @@
 <div class="header">
     <div class="header-brand">
         <div class="header-title">Fatura Kontrol</div>
-        <div class="header-subtitle">XML kontrol alanı</div>
+        <div class="header-subtitle">XML yükle, denetle ve çıktıyı sade bir görünümle izle</div>
     </div>
     <div class="header-actions">
         <span id="scaleStatus" class="status">Sistem Bekleniyor...</span>
@@ -915,7 +961,7 @@
     </div>
 
     <div class="panel-audit">
-        <div class="audit-header">DENETİM PANELİ</div>
+        <div class="audit-header">YTB DENETİM PANELİ</div>
         <details class="audit-section audit-collapse">
             <summary class="audit-summary">
                 <div class="audit-title">1. METİN KONTROLÜ</div>
@@ -930,6 +976,27 @@
             <div class="audit-title">2. KDV 13/d KONTROLÜ</div>
             <div id="audit-math-result" class="audit-math-result">XML bekleniyor...</div>
             <div id="audit-math-details" class="details-box"></div>
+        </div>
+        <div class="audit-section">
+            <div class="audit-title">3. ÜRÜN SERIALID / VAZGEÇİLEN KDV KONTROLÜ</div>
+
+            <div class="audit-subtitle">3.1 SerialID Kontrolü</div>
+            <div id="audit-serial-result" class="audit-math-result">XML bekleniyor...</div>
+            <div id="audit-serial-details" class="details-box"></div>
+
+            <div class="audit-subtitle">3.2 Vazgeçilen KDV Kontrolü</div>
+            <div id="audit-waived-tax-result" class="audit-math-result">XML bekleniyor...</div>
+            <div id="audit-waived-tax-details" class="details-box"></div>
+
+            <details class="audit-collapse">
+                <summary>
+                    <span>3.3 Örnek XML KDV Kırılımı</span>
+                    <span class="audit-summary-meta">Açık / Kapat</span>
+                </summary>
+                <div class="audit-collapse-body">
+                    <div id="audit-waived-tax-breakdown" class="details-box">XML bekleniyor...</div>
+                </div>
+            </details>
         </div>
     </div>
 </div>
@@ -977,6 +1044,289 @@
         return new RegExp(`(?![^<]*>)(${pattern})`, 'gi'); 
     }
 
+    function isElementLocalName(node, localName) {
+        if (!node || node.nodeType !== 1) return false;
+        const nodeName = String(node.localName || node.tagName || node.nodeName || '');
+        const qualifiedName = String(node.nodeName || '');
+        const tagName = String(node.tagName || '');
+
+        return nodeName === localName
+            || qualifiedName === localName
+            || tagName === localName
+            || qualifiedName.endsWith(`:${localName}`);
+    }
+
+    function getDirectElementsByLocalName(root, localName) {
+        const results = [];
+        const startNode = root && root.documentElement ? root.documentElement : root;
+
+        if (!startNode || !startNode.childNodes) return results;
+
+        for (const child of Array.from(startNode.childNodes)) {
+            if (isElementLocalName(child, localName)) {
+                results.push(child);
+            }
+        }
+
+        return results;
+    }
+
+    function getDirectElementByLocalName(root, localName) {
+        const nodes = getDirectElementsByLocalName(root, localName);
+        return nodes.length > 0 ? nodes[0] : null;
+    }
+
+    function collectElementsByLocalName(root, localName) {
+        const results = [];
+        const seen = new Set();
+        const startNode = root && root.documentElement ? root.documentElement : root;
+
+        function walk(node) {
+            if (!node || !node.childNodes) return;
+            for (const child of Array.from(node.childNodes)) {
+                if (child.nodeType !== 1) continue;
+                if (isElementLocalName(child, localName) && !seen.has(child)) {
+                    seen.add(child);
+                    results.push(child);
+                }
+                walk(child);
+            }
+        }
+
+        walk(startNode);
+        return results;
+    }
+
+    function getFirstElementByLocalName(root, localName) {
+        const nodes = collectElementsByLocalName(root, localName);
+        return nodes.length > 0 ? nodes[0] : null;
+    }
+
+    function getXmlValue(xmlRoot, tagName) {
+        const node = getFirstElementByLocalName(xmlRoot, tagName);
+        return node ? node.textContent.trim() : "";
+    }
+
+    function parseXmlNumber(value) {
+        const raw = String(value ?? "").trim();
+        if (!raw) return 0;
+
+        const compact = raw.replace(/\s+/g, '');
+        const hasComma = compact.includes(',');
+        const hasDot = compact.includes('.');
+        let normalized = compact;
+
+        if (hasComma && hasDot) {
+            normalized = compact.lastIndexOf(',') > compact.lastIndexOf('.')
+                ? compact.replace(/\./g, '').replace(',', '.')
+                : compact.replace(/,/g, '');
+        } else if (hasComma) {
+            normalized = compact.replace(',', '.');
+        }
+
+        const parsed = Number.parseFloat(normalized.replace(/[^0-9+\-Ee.]/g, ''));
+        return Number.isFinite(parsed) ? parsed : 0;
+    }
+
+    function formatXmlNumber(value) {
+        return Number.isFinite(value)
+            ? value.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+            : '0,00';
+    }
+
+    function escapeHtml(value) {
+        return String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function renderTaxAmountBadge(amountValue, currencyID = '', tone = 'line') {
+        const amountText = formatXmlNumber(amountValue);
+        const safeCurrency = String(currencyID || '').trim();
+        const currencyPart = safeCurrency ? ` <span class="tax-currency-badge">${escapeHtml(safeCurrency)}</span>` : '';
+        return `<span class="tax-amount-badge ${tone}">${amountText}${currencyPart}</span>`;
+    }
+
+    function extractItemSerialAudit(xmlDoc) {
+        const itemInstances = collectElementsByLocalName(xmlDoc, 'ItemInstance');
+        const records = itemInstances.map((itemInstance, index) => {
+            const serialIds = collectElementsByLocalName(itemInstance, 'SerialID')
+                .map(node => node.textContent.trim())
+                .filter(Boolean);
+            const productTraceIds = collectElementsByLocalName(itemInstance, 'ProductTraceID')
+                .map(node => node.textContent.trim())
+                .filter(Boolean);
+
+            return {
+                index: index + 1,
+                serialIds,
+                productTraceIds
+            };
+        });
+
+        const serialEntries = [];
+        records.forEach(record => {
+            record.serialIds.forEach(serialId => {
+                serialEntries.push({
+                    itemIndex: record.index,
+                    serialId,
+                    productTraceId: record.productTraceIds[0] || ''
+                });
+            });
+        });
+
+        const missingRecords = records.filter(record => record.serialIds.length === 0);
+
+        return {
+            itemInstances,
+            records,
+            serialEntries,
+            missingRecords
+        };
+    }
+
+    function extractWaivedVatAudit(xmlDoc) {
+        const invoiceNode = getFirstElementByLocalName(xmlDoc, 'Invoice') || xmlDoc.documentElement || xmlDoc;
+        const headerTaxTotals = getDirectElementsByLocalName(invoiceNode, 'TaxTotal');
+        const lineNodes = getDirectElementsByLocalName(invoiceNode, 'InvoiceLine');
+        const subtotalEntries = [];
+        const headerSubtotalEntries = [];
+        const lineSubtotalEntries = [];
+        const allTaxTotals = [...headerTaxTotals];
+
+        let headerTaxTotalAmountValue = 0;
+        let headerTaxTotalAmountCurrencyID = '';
+        let headerTaxSubtotalTotalValue = 0;
+        let lineTaxSubtotalTotalValue = 0;
+
+        function createTaxSubtotalEntry(taxSubtotalNode, context) {
+            const taxableAmountNode = getDirectElementByLocalName(taxSubtotalNode, 'TaxableAmount');
+            const taxAmountNode = getDirectElementByLocalName(taxSubtotalNode, 'TaxAmount');
+            const calculationSequenceNode = getDirectElementByLocalName(taxSubtotalNode, 'CalculationSequenceNumeric');
+            const percentNode = getDirectElementByLocalName(taxSubtotalNode, 'Percent');
+            const taxCategoryNode = getDirectElementByLocalName(taxSubtotalNode, 'TaxCategory');
+            const taxSchemeNode = taxCategoryNode ? getDirectElementByLocalName(taxCategoryNode, 'TaxScheme') : null;
+            const taxTypeCodeNode = taxSchemeNode ? getDirectElementByLocalName(taxSchemeNode, 'TaxTypeCode') : null;
+            const taxSchemeNameNode = taxSchemeNode ? getDirectElementByLocalName(taxSchemeNode, 'Name') : null;
+            const taxExemptionReasonCodeNode = taxCategoryNode ? getDirectElementByLocalName(taxCategoryNode, 'TaxExemptionReasonCode') : null;
+            const taxExemptionReasonNode = taxCategoryNode ? getDirectElementByLocalName(taxCategoryNode, 'TaxExemptionReason') : null;
+            const itemNode = context.lineNode ? getDirectElementByLocalName(context.lineNode, 'Item') : null;
+            const itemNameNode = itemNode ? getDirectElementByLocalName(itemNode, 'Name') : null;
+            const lineIdNode = context.lineNode ? getDirectElementByLocalName(context.lineNode, 'ID') : null;
+            const serialIds = itemNode
+                ? collectElementsByLocalName(itemNode, 'SerialID').map(node => node.textContent.trim()).filter(Boolean)
+                : [];
+            const productTraceIds = itemNode
+                ? collectElementsByLocalName(itemNode, 'ProductTraceID').map(node => node.textContent.trim()).filter(Boolean)
+                : [];
+            const taxableAmountCurrencyID = taxableAmountNode ? (taxableAmountNode.getAttribute('currencyID') || '') : '';
+            const taxAmountCurrencyID = taxAmountNode ? (taxAmountNode.getAttribute('currencyID') || '') : '';
+
+            return {
+                scope: context.scope,
+                lineIndex: context.lineIndex || 0,
+                lineId: lineIdNode ? lineIdNode.textContent.trim() : '',
+                itemName: itemNameNode ? itemNameNode.textContent.trim() : '',
+                serialIds,
+                productTraceIds,
+                taxTotalIndex: context.taxTotalIndex,
+                subtotalIndex: context.subtotalIndex,
+                taxableAmount: taxableAmountNode ? taxableAmountNode.textContent.trim() : '',
+                taxAmount: taxAmountNode ? taxAmountNode.textContent.trim() : '',
+                taxableAmountValue: taxableAmountNode ? parseXmlNumber(taxableAmountNode.textContent) : 0,
+                taxAmountValue: taxAmountNode ? parseXmlNumber(taxAmountNode.textContent) : 0,
+                taxableAmountCurrencyID,
+                taxAmountCurrencyID,
+                calculationSequenceNumeric: calculationSequenceNode ? calculationSequenceNode.textContent.trim() : '',
+                percent: percentNode ? percentNode.textContent.trim() : '',
+                taxSchemeName: taxSchemeNameNode ? taxSchemeNameNode.textContent.trim() : '',
+                taxTypeCode: taxTypeCodeNode ? taxTypeCodeNode.textContent.trim() : '',
+                taxExemptionReasonCode: taxExemptionReasonCodeNode ? taxExemptionReasonCodeNode.textContent.trim() : '',
+                taxExemptionReason: taxExemptionReasonNode ? taxExemptionReasonNode.textContent.trim() : '',
+                hasTaxAmountCurrencyID: Boolean(taxAmountCurrencyID),
+                hasTaxableAmountCurrencyID: Boolean(taxableAmountCurrencyID)
+            };
+        }
+
+        headerTaxTotals.forEach((taxTotalNode, taxTotalIndex) => {
+            const taxAmountNode = getDirectElementByLocalName(taxTotalNode, 'TaxAmount');
+            const taxAmountValue = taxAmountNode ? parseXmlNumber(taxAmountNode.textContent) : 0;
+            const taxAmountCurrencyID = taxAmountNode ? (taxAmountNode.getAttribute('currencyID') || '') : '';
+            const taxSubtotals = getDirectElementsByLocalName(taxTotalNode, 'TaxSubtotal');
+
+            headerTaxTotalAmountValue += taxAmountValue;
+            if (!headerTaxTotalAmountCurrencyID && taxAmountCurrencyID) {
+                headerTaxTotalAmountCurrencyID = taxAmountCurrencyID;
+            }
+
+            taxSubtotals.forEach((taxSubtotalNode, subtotalIndex) => {
+                const entry = createTaxSubtotalEntry(taxSubtotalNode, {
+                    scope: 'header',
+                    taxTotalIndex: taxTotalIndex + 1,
+                    subtotalIndex: subtotalIndex + 1
+                });
+
+                subtotalEntries.push(entry);
+                headerSubtotalEntries.push(entry);
+                headerTaxSubtotalTotalValue += entry.taxAmountValue;
+
+                if (!headerTaxTotalAmountCurrencyID && entry.taxAmountCurrencyID) {
+                    headerTaxTotalAmountCurrencyID = entry.taxAmountCurrencyID;
+                }
+            });
+        });
+
+        lineNodes.forEach((lineNode, lineIndex) => {
+            const lineTaxTotals = getDirectElementsByLocalName(lineNode, 'TaxTotal');
+
+            lineTaxTotals.forEach((taxTotalNode, taxTotalIndex) => {
+                allTaxTotals.push(taxTotalNode);
+                const taxSubtotals = getDirectElementsByLocalName(taxTotalNode, 'TaxSubtotal');
+
+                taxSubtotals.forEach((taxSubtotalNode, subtotalIndex) => {
+                    const entry = createTaxSubtotalEntry(taxSubtotalNode, {
+                        scope: 'line',
+                        lineIndex: lineIndex + 1,
+                        lineNode,
+                        taxTotalIndex: taxTotalIndex + 1,
+                        subtotalIndex: subtotalIndex + 1
+                    });
+
+                    subtotalEntries.push(entry);
+                    lineSubtotalEntries.push(entry);
+                    lineTaxSubtotalTotalValue += entry.taxAmountValue;
+                });
+            });
+        });
+
+        const referenceTaxAmountValue = headerTaxSubtotalTotalValue > 0
+            ? headerTaxSubtotalTotalValue
+            : headerTaxTotalAmountValue;
+
+        const referenceTaxCurrencyID = headerSubtotalEntries.find(entry => entry.taxAmountCurrencyID)?.taxAmountCurrencyID
+            || headerTaxTotalAmountCurrencyID
+            || lineSubtotalEntries.find(entry => entry.taxAmountCurrencyID)?.taxAmountCurrencyID
+            || lineSubtotalEntries.find(entry => entry.taxableAmountCurrencyID)?.taxableAmountCurrencyID
+            || '';
+
+        return {
+            taxTotals: allTaxTotals,
+            subtotalEntries,
+            headerSubtotalEntries,
+            lineSubtotalEntries,
+            headerTaxTotalAmountValue,
+            headerTaxTotalAmountCurrencyID,
+            headerTaxSubtotalTotalValue,
+            lineTaxSubtotalTotalValue,
+            referenceTaxAmountValue,
+            referenceTaxCurrencyID,
+            referenceTaxSource: headerTaxSubtotalTotalValue > 0 ? 'header-taxsubtotal' : 'header-taxtotal'
+        };
+    }
+
     const dropZone = document.getElementById('dropZone');
     const fileInput = document.getElementById('fileInput');
     const xmlInput = document.getElementById('xmlInput');
@@ -1011,11 +1361,6 @@
         reader.readAsText(file);
     }
 
-    function getXmlValue(xmlDoc, tagName) {
-        const nodes = xmlDoc.getElementsByTagNameNS("*", tagName);
-        return nodes.length > 0 ? nodes[0].textContent.trim() : "0";
-    }
-
     async function processInvoice() {
         let xmlText = xmlInput.value.trim();
         const container = document.getElementById('invoiceContent');
@@ -1034,7 +1379,7 @@
                 return;
             }
 
-            const xsltNode = xmlDoc.getElementsByTagNameNS("*", "EmbeddedDocumentBinaryObject")[0];
+            const xsltNode = getFirstElementByLocalName(xmlDoc, "EmbeddedDocumentBinaryObject");
             if (xsltNode) {
                 const arr = Uint8Array.from(atob(xsltNode.textContent.trim()), c => c.charCodeAt(0));
                 const utf8Xslt = new TextDecoder("utf-8").decode(arr);
@@ -1063,7 +1408,7 @@
             let fullText = "";
             const searchTags = ["Note", "Name", "Description", "TaxExemptionReason"];
             searchTags.forEach(tag => {
-                const nodes = xmlDoc.getElementsByTagNameNS("*", tag);
+                const nodes = collectElementsByLocalName(xmlDoc, tag);
                 for (let node of nodes) fullText += " " + node.textContent;
             });
 
@@ -1093,20 +1438,22 @@
 
             const extAmtStr = getXmlValue(xmlDoc, "LineExtensionAmount"); 
             const payAmtStr = getXmlValue(xmlDoc, "PayableAmount"); 
-            
-            const taxNodes = xmlDoc.getElementsByTagNameNS("*", "TaxTotal");
-            let totalTaxAmt = 0;
-            if(taxNodes.length > 0) {
-                totalTaxAmt = parseFloat(taxNodes[0].getElementsByTagNameNS("*", "TaxAmount")[0]?.textContent || 0);
-            }
+            const payableAmountNode = getFirstElementByLocalName(xmlDoc, "PayableAmount");
+            const payableCurrency = payableAmountNode ? (payableAmountNode.getAttribute("currencyID") || "") : "";
 
-            const malHizmet = parseFloat(extAmtStr || 0);
-            const odenecek = parseFloat(payAmtStr || 0);
+            const waivedVatAudit = extractWaivedVatAudit(xmlDoc);
+            const totalTaxAmt = waivedVatAudit.referenceTaxAmountValue;
+            const documentCurrencyCode = getXmlValue(xmlDoc, "DocumentCurrencyCode");
+            const referenceTaxCurrency = waivedVatAudit.referenceTaxCurrencyID || documentCurrencyCode;
+            const currencyMatchesDocument = !documentCurrencyCode || !referenceTaxCurrency || referenceTaxCurrency === documentCurrencyCode;
+            
+            const malHizmet = parseXmlNumber(extAmtStr);
+            const odenecek = parseXmlNumber(payAmtStr);
 
             const mathRes = document.getElementById("audit-math-result");
             const mathDetails = document.getElementById("audit-math-details");
 
-            mathDetails.innerHTML = `Mal Hizmet: ${malHizmet.toFixed(2)}<br>Hesaplanan KDV: ${totalTaxAmt.toFixed(2)}<br>Ödenecek Tutar: ${odenecek.toFixed(2)}`;
+            mathDetails.innerHTML = `Mal Hizmet: ${formatXmlNumber(malHizmet)}${documentCurrencyCode ? ` ${documentCurrencyCode}` : ''}<br>Hesaplanan KDV: ${formatXmlNumber(totalTaxAmt)}${referenceTaxCurrency ? ` ${referenceTaxCurrency}` : ''}<br>Ödenecek Tutar: ${formatXmlNumber(odenecek)}${payableCurrency ? ` ${payableCurrency}` : ''}`;
 
             let isYTB = AUDIT_KEYWORDS.some(w => found.has(w));
 
@@ -1122,6 +1469,122 @@
                 }
             } else {
                 mathRes.innerHTML = `<span style="color:#aaa;">Faturada Teşvik ibaresi bulunmadığı için matematik kontrolü atlandı.</span>`;
+            }
+
+            const serialAudit = extractItemSerialAudit(xmlDoc);
+            const serialResult = document.getElementById("audit-serial-result");
+            const serialDetails = document.getElementById("audit-serial-details");
+
+            if (serialAudit.itemInstances.length === 0) {
+                serialResult.innerHTML = `<div class="alert-box">UYARI<br>XML içinde <b>ItemInstance</b> bulunamadı.</div>`;
+                serialDetails.innerHTML = `ItemInstance taraması yapılamadı.`;
+            } else if (serialAudit.missingRecords.length > 0 || serialAudit.serialEntries.length !== serialAudit.itemInstances.length) {
+                const missingIndexes = serialAudit.missingRecords.map(record => `#${record.index}`).join(', ');
+                serialResult.innerHTML = `<div class="alert-box">UYARI<br>${serialAudit.itemInstances.length} ürün bulundu, ${serialAudit.serialEntries.length} adet SerialID yakalandı. Eksik seri: ${serialAudit.missingRecords.length} ürün.</div>`;
+                serialDetails.innerHTML = [
+                    `Toplam ItemInstance: ${serialAudit.itemInstances.length}`,
+                    `Bulunan SerialID: ${serialAudit.serialEntries.length}`,
+                    `Eksik ürünler: ${missingIndexes || 'Yok'}`,
+                    '',
+                    ...serialAudit.records.map(record => {
+                        const serialText = record.serialIds.length ? record.serialIds.join(', ') : 'SerialID yok';
+                        const traceText = record.productTraceIds.length ? record.productTraceIds.join(', ') : 'ProductTraceID yok';
+                        return `Ürün #${record.index} | SerialID: ${serialText} | ProductTraceID: ${traceText}`;
+                    })
+                ].join('<br>');
+            } else {
+                const serialList = serialAudit.serialEntries.map(entry => `#${entry.itemIndex}: ${entry.serialId}${entry.productTraceId ? ` (ProductTraceID: ${entry.productTraceId})` : ''}`).join('<br>');
+                serialResult.innerHTML = `<div class="success-box">✔ SERIALID KONTROLÜ DOĞRU<br>${serialAudit.itemInstances.length} ürünün tamamında SerialID var.</div>`;
+                serialDetails.innerHTML = [
+                    `Toplam ItemInstance: ${serialAudit.itemInstances.length}`,
+                    `SerialID listesi:`,
+                    serialList || 'SerialID bulunamadı.'
+                ].join('<br>');
+            }
+
+            const waivedVatResult = document.getElementById("audit-waived-tax-result");
+            const waivedVatDetails = document.getElementById("audit-waived-tax-details");
+            const waivedVatBreakdown = document.getElementById("audit-waived-tax-breakdown");
+
+            if (waivedVatAudit.subtotalEntries.length === 0) {
+                waivedVatResult.innerHTML = `<div class="alert-box">UYARI<br>TaxTotal altında <b>TaxSubtotal</b> bulunamadı.</div>`;
+                waivedVatDetails.innerHTML = `Vazgeçilen KDV kaydı tespit edilemedi.`;
+                waivedVatBreakdown.innerHTML = `Örnek XML kırılımı bulunamadı.`;
+            } else {
+                const matchingEntries = waivedVatAudit.subtotalEntries.filter(entry => {
+                    const amountMatches = Math.abs(entry.taxAmountValue - totalTaxAmt) < 0.02;
+                    const currencyMatches = !referenceTaxCurrency || !entry.taxAmountCurrencyID || entry.taxAmountCurrencyID === referenceTaxCurrency;
+                    return entry.scope === 'header' && amountMatches && currencyMatches;
+                });
+
+                const currencyIdEntries = waivedVatAudit.subtotalEntries.filter(entry => entry.hasTaxAmountCurrencyID);
+                const hasAnyTaxAmount = waivedVatAudit.subtotalEntries.some(entry => entry.taxAmount);
+                const referenceSourceNote = waivedVatAudit.referenceTaxSource === 'header-taxsubtotal'
+                    ? 'TaxTotal/TaxAmount değeri yerine TaxSubtotal toplamı referans alındı'
+                    : 'TaxTotal/TaxAmount referans alındı';
+                const referenceSummary = `Referans KDV: ${renderTaxAmountBadge(totalTaxAmt, referenceTaxCurrency, 'reference')} (${referenceSourceNote})`;
+
+                if (!hasAnyTaxAmount) {
+                    waivedVatResult.innerHTML = `<div class="alert-box">UYARI<br>TaxSubtotal bulundu ama <b>TaxAmount</b> değeri boş görünüyor.</div>`;
+                } else if (matchingEntries.length > 0) {
+                    const bestMatch = matchingEntries[0];
+                    const bestMatchLabel = bestMatch.scope === 'header'
+                        ? 'Fatura toplamı'
+                        : `Satır #${bestMatch.lineIndex}${bestMatch.itemName ? ` - ${bestMatch.itemName}` : ''}`;
+                    waivedVatResult.innerHTML = `<div class="success-box">✔ VAZGEÇİLEN KDV EŞLEŞTİ<br>${bestMatchLabel} içindeki TaxAmount currencyID="${bestMatch.taxAmountCurrencyID || 'YOK'}" olan ${renderTaxAmountBadge(bestMatch.taxAmountValue, bestMatch.taxAmountCurrencyID, 'reference')} faturadaki referans KDV ile uyumlu.</div>`;
+                } else if (currencyIdEntries.length > 0) {
+                    waivedVatResult.innerHTML = `<div class="alert-box">UYARI<br>TaxAmount currencyID bulundu ama fatura içeriğindeki referans KDV ile birebir eşleşme yok.</div>`;
+                } else {
+                    waivedVatResult.innerHTML = `<div class="alert-box">UYARI<br>TaxAmount currencyID alanı bulunamadı.</div>`;
+                }
+
+                waivedVatDetails.innerHTML = [
+                    referenceSummary,
+                    `Belge para birimi: ${documentCurrencyCode || 'YOK'}`,
+                    `Referans KDV para birimi: ${referenceTaxCurrency || 'YOK'}`,
+                    `Para birimi uyumu: ${currencyMatchesDocument ? 'EVET' : 'HAYIR'}`,
+                    `Header TaxTotal/TaxAmount toplamı: ${renderTaxAmountBadge(waivedVatAudit.headerTaxTotalAmountValue, waivedVatAudit.headerTaxTotalAmountCurrencyID || referenceTaxCurrency || documentCurrencyCode, 'zero')}`,
+                    `Header TaxSubtotal toplamı: ${renderTaxAmountBadge(waivedVatAudit.headerTaxSubtotalTotalValue, referenceTaxCurrency, 'reference')}`,
+                    `Satır TaxSubtotal toplamı: ${renderTaxAmountBadge(waivedVatAudit.lineTaxSubtotalTotalValue, referenceTaxCurrency, 'line')}`,
+                    `Header TaxSubtotal sayısı: ${waivedVatAudit.headerSubtotalEntries.length}`,
+                    `Satır TaxSubtotal sayısı: ${waivedVatAudit.lineSubtotalEntries.length}`,
+                    `Eşleşen kayıt: ${matchingEntries.length}`,
+                    '',
+                    ...waivedVatAudit.subtotalEntries.map(entry => {
+                        const taxableText = entry.taxableAmount ? `${formatXmlNumber(entry.taxableAmountValue)}${entry.taxableAmountCurrencyID ? ` ${entry.taxableAmountCurrencyID}` : ''}` : 'YOK';
+                        const isMatch = entry.scope === 'header' && Math.abs(entry.taxAmountValue - totalTaxAmt) < 0.02 && (!referenceTaxCurrency || !entry.taxAmountCurrencyID || entry.taxAmountCurrencyID === referenceTaxCurrency);
+                        const taxTone = isMatch ? 'reference' : (entry.scope === 'header' ? 'zero' : 'line');
+                        const taxText = entry.taxAmount ? renderTaxAmountBadge(entry.taxAmountValue, entry.taxAmountCurrencyID, taxTone) : 'YOK';
+                        const matchText = isMatch ? 'REFERANS' : (entry.scope === 'header' ? 'FARKLI' : 'SATIR DETAYI');
+                        const scopeText = entry.scope === 'header'
+                            ? 'Fatura toplamı'
+                            : `Satır #${entry.lineIndex}${entry.lineId ? ` (ID: ${entry.lineId})` : ''}${entry.itemName ? ` - ${entry.itemName}` : ''}`;
+                        const serialText = entry.serialIds.length ? ` | SerialID: ${entry.serialIds.join(', ')}` : '';
+                        const traceText = entry.productTraceIds.length ? ` | ProductTraceID: ${entry.productTraceIds.join(', ')}` : '';
+                        const taxTypeText = entry.taxTypeCode ? ` | TaxTypeCode: ${entry.taxTypeCode}` : '';
+                        const exemptionText = entry.taxExemptionReasonCode ? ` | Exemption: ${entry.taxExemptionReasonCode}` : '';
+                        return `${scopeText} | TaxTotal #${entry.taxTotalIndex} / TaxSubtotal #${entry.subtotalIndex} | TaxableAmount: ${taxableText} | TaxAmount: ${taxText} | CalculationSequenceNumeric: ${entry.calculationSequenceNumeric || 'YOK'} | Percent: ${entry.percent || 'YOK'}${taxTypeText}${exemptionText} | ${matchText}${serialText}${traceText}`;
+                    })
+                ].join('<br>');
+
+                waivedVatBreakdown.innerHTML = [
+                    `Belge para birimi: ${documentCurrencyCode || 'YOK'}`,
+                    `Header TaxTotal/TaxAmount: ${renderTaxAmountBadge(waivedVatAudit.headerTaxTotalAmountValue, waivedVatAudit.headerTaxTotalAmountCurrencyID || referenceTaxCurrency || documentCurrencyCode, 'zero')}`,
+                    `Header TaxSubtotal toplamı: ${renderTaxAmountBadge(waivedVatAudit.headerTaxSubtotalTotalValue, referenceTaxCurrency, 'reference')}`,
+                    `Satır TaxSubtotal toplamı: ${renderTaxAmountBadge(waivedVatAudit.lineTaxSubtotalTotalValue, referenceTaxCurrency, 'line')}`,
+                    '',
+                    ...waivedVatAudit.subtotalEntries.map(entry => {
+                        const scopeText = entry.scope === 'header'
+                            ? 'Header / Fatura toplamı'
+                            : `Satır #${entry.lineIndex}${entry.lineId ? ` (ID: ${entry.lineId})` : ''}${entry.itemName ? ` - ${entry.itemName}` : ''}`;
+                        const taxTone = entry.scope === 'header' ? (Math.abs(entry.taxAmountValue - totalTaxAmt) < 0.02 ? 'reference' : 'zero') : 'line';
+                        const taxText = entry.taxAmount ? renderTaxAmountBadge(entry.taxAmountValue, entry.taxAmountCurrencyID, taxTone) : 'YOK';
+                        const taxableText = entry.taxableAmount ? `${formatXmlNumber(entry.taxableAmountValue)}${entry.taxableAmountCurrencyID ? ` ${entry.taxableAmountCurrencyID}` : ''}` : 'YOK';
+                        const serialText = entry.serialIds.length ? ` | SerialID: ${entry.serialIds.join(', ')}` : '';
+                        const traceText = entry.productTraceIds.length ? ` | ProductTraceID: ${entry.productTraceIds.join(', ')}` : '';
+                        return `${scopeText} | TaxableAmount: ${taxableText} | TaxAmount: ${taxText} | Percent: ${entry.percent || 'YOK'}${serialText}${traceText}`;
+                    })
+                ].join('<br>');
             }
 
         } catch (e) {
